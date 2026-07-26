@@ -38,6 +38,15 @@ interface NotificacaoAdmin {
 export default function AdminPage() {
   const [busca, setBusca] = useState('');
   const [activeTab, setActiveTab] = useState<'clientes' | 'notificacoes' | 'historico'>('clientes');
+  const [emailLogado, setEmailLogado] = useState<string | null>(null);
+  const [verificandoSessao, setVerificandoSessao] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setEmailLogado(data.user?.email ?? null);
+      setVerificandoSessao(false);
+    });
+  }, []);
 
   // ==========================================
   // CLIENTES (Supabase)
@@ -232,6 +241,16 @@ export default function AdminPage() {
             <h1 className="text-2xl font-serif text-[#0D0D0D] mt-1">Painel Administrativo KG</h1>
           </div>
         </header>
+
+        {!verificandoSessao && (
+          <div className={`rounded-xl px-4 py-2.5 text-xs font-medium ${
+            emailLogado ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'
+          }`}>
+            {emailLogado
+              ? `Sessão ativa como: ${emailLogado}`
+              : 'Você não está logado — faça login em /login antes de usar o painel, senão os cadastros serão recusados.'}
+          </div>
+        )}
 
         {activeTab === 'clientes' && (
           <section className="space-y-4">
