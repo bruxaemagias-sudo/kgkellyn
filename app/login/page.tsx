@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,28 +18,20 @@ export default function LoginPage() {
     setErro('');
     setCarregando(true);
 
-    // ==========================================
-    // MOCK DE AUTENTICAÇÃO — trocar pelo Supabase quando estiver configurado
-    // ==========================================
-    // Quando o Supabase estiver conectado (ver lib/supabaseClient.ts), troque
-    // este bloco por:
-    //
-    // const { data, error } = await supabase.auth.signInWithPassword({ email, password: senha });
-    // if (error || !data.user) {
-    //   setErro('Você ainda não possui acesso ao Portal KG. Entre em contato com nossa equipe.');
-    //   setTimeout(() => window.open('https://wa.me/5551996995835', '_blank'), 1500);
-    //   return;
-    // }
-    // router.push('/portal');
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: senha,
+    });
 
-    setTimeout(() => {
-      setCarregando(false);
-      if (email && senha) {
-        router.push('/portal');
-      } else {
-        setErro('Preencha email e senha.');
-      }
-    }, 600);
+    setCarregando(false);
+
+    if (error || !data.user) {
+      setErro('Você ainda não possui acesso ao Portal KG. Entre em contato com nossa equipe.');
+      setTimeout(() => window.open('https://wa.me/5551996995835', '_blank'), 1800);
+      return;
+    }
+
+    router.push('/portal');
   };
 
   return (
