@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import {
   Instagram,
   Phone,
@@ -14,6 +15,27 @@ import { DIFERENCIAIS, SERVICOS, TIMELINE, ICON_SPARKLES } from '@/lib/data';
 export default function Home() {
   const [servicoAtivo, setServicoAtivo] = useState<string | null>(null);
   const SparklesIcon = ICON_SPARKLES;
+
+  interface DepoimentoPublico {
+    id: string;
+    nome_cliente: string;
+    empresa: string | null;
+    avaliacao: number;
+    texto: string;
+  }
+
+  const [depoimentos, setDepoimentos] = useState<DepoimentoPublico[]>([]);
+
+  useEffect(() => {
+    supabase
+      .from('depoimentos')
+      .select('id, nome_cliente, empresa, avaliacao, texto')
+      .eq('publicado', true)
+      .order('criado_em', { ascending: false })
+      .then(({ data }) => {
+        if (data) setDepoimentos(data as DepoimentoPublico[]);
+      });
+  }, []);
 
   return (
     <main className="min-h-screen bg-white">
@@ -205,21 +227,41 @@ export default function Home() {
       </section>
 
       {/* ========================================== */}
-      {/* DEPOIMENTOS — sem conteúdo fictício, aguardando cadastro real */}
+      {/* DEPOIMENTOS — sem conteúdo fictício, dados reais do Supabase */}
       {/* ========================================== */}
-      <section className="py-28 px-6 max-w-4xl mx-auto text-center">
+      <section className="py-28 px-6 max-w-5xl mx-auto text-center">
         <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#4C1B53] mb-4">
           Depoimentos
         </p>
-        <h2 className="font-serif text-3xl md:text-4xl text-[#0D0D0D] mb-6">
+        <h2 className="font-serif text-3xl md:text-4xl text-[#0D0D0D] mb-10">
           O que dizem nossos clientes.
         </h2>
-        <div className="flex justify-center gap-1 mb-6 text-[#4C1B53]/30">
-          <Star size={18} /><Star size={18} /><Star size={18} /><Star size={18} /><Star size={18} />
-        </div>
-        <p className="text-gray-400 text-sm max-w-md mx-auto">
-          Em breve você encontrará aqui a opinião de clientes que confiam na KG Contabilidade.
-        </p>
+
+        {depoimentos.length === 0 ? (
+          <>
+            <div className="flex justify-center gap-1 mb-6 text-[#4C1B53]/30">
+              <Star size={18} /><Star size={18} /><Star size={18} /><Star size={18} /><Star size={18} />
+            </div>
+            <p className="text-gray-400 text-sm max-w-md mx-auto">
+              Em breve você encontrará aqui a opinião de clientes que confiam na KG Contabilidade.
+            </p>
+          </>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+            {depoimentos.map((d) => (
+              <div key={d.id} className="bg-[#FBF9F6] border border-[#EBEAE6] rounded-3xl p-6">
+                <div className="flex gap-0.5 mb-3 text-[#4C1B53]">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} size={14} fill={i < d.avaliacao ? '#4C1B53' : 'none'} />
+                  ))}
+                </div>
+                <p className="text-sm text-gray-600 leading-relaxed mb-4">&ldquo;{d.texto}&rdquo;</p>
+                <p className="text-xs font-bold text-[#0D0D0D]">{d.nome_cliente}</p>
+                {d.empresa && <p className="text-[11px] text-gray-400">{d.empresa}</p>}
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* ========================================== */}
