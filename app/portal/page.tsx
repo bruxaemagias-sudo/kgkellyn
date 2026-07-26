@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
 import {
   LayoutDashboard,
   Wallet,
   Settings,
   MessageCircle,
   Bell,
+  Check,
+  CheckCheck,
   LogOut,
   Sparkles,
   ShieldCheck,
@@ -144,6 +147,73 @@ export default function PortalKG() {
 
   const [filtroDetalhamento, setFiltroDetalhamento] = useState<'mes' | 'ano'>('mes');
   const [filtroGrafico, setFiltroGrafico] = useState<'mes' | 'ano'>('ano');
+
+  // ==========================================
+  // NOTIFICAÇÕES (Supabase Realtime)
+  // ==========================================
+  interface NotificacaoItem {
+    id: string;
+    titulo: string;
+    mensagem: string;
+    categoria: string | null;
+    lida: boolean;
+    criado_em: string;
+    link_opcional: string | null;
+  }
+
+  const [notificacoes, setNotificacoes] = useState<NotificacaoItem[]>([]);
+  const [painelNotificacoesAberto, setPainelNotificacoesAberto] = useState(false);
+  const naoLidas = notificacoes.filter((n) => !n.lida).length;
+
+  useEffect(() => {
+    let canal: ReturnType<typeof supabase.channel> | null = null;
+
+    const carregarNotificacoes = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) return;
+
+      const { data } = await supabase
+        .from('notificacoes')
+        .select('id, titulo, mensagem, categoria, lida, criado_em, link_opcional')
+        .order('criado_em', { ascending: false });
+
+      if (data) setNotificacoes(data as NotificacaoItem[]);
+
+      canal = supabase
+        .channel('notificacoes-realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notificacoes' },
+          () => {
+            carregarNotificacoes();
+          }
+        )
+        .subscribe();
+    };
+
+    carregarNotificacoes();
+
+    return () => {
+      if (canal) supabase.removeChannel(canal);
+    };
+  }, []);
+
+  const marcarComoLida = async (id: string) => {
+    await supabase
+      .from('notificacoes')
+      .update({ lida: true, data_leitura: new Date().toISOString() })
+      .eq('id', id);
+  };
+
+  const marcarTodasComoLidas = async () => {
+    const idsNaoLidas = notificacoes.filter((n) => !n.lida).map((n) => n.id);
+    if (idsNaoLidas.length === 0) return;
+    await supabase
+      .from('notificacoes')
+      .update({ lida: true, data_leitura: new Date().toISOString() })
+      .in('id', idsNaoLidas);
+  };
 
   // ==========================================
   // 2) VALORES DERIVADOS (agora que todos os estados já existem)
@@ -373,10 +443,58 @@ export default function PortalKG() {
 
           <div className="flex items-center gap-4">
             {/* BOTÃO DE NOTIFICAÇÃO */}
-            <button className="p-2 bg-white border border-gray-200 rounded-full hover:bg-gray-50 relative">
-              <Bell size={16} className="text-gray-600" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-[#4C1B53] rounded-full"></span>
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setPainelNotificacoesAberto((v) => !v)}
+                className="p-2 bg-white border border-gray-200 rounded-full hover:bg-gray-50 relative"
+              >
+                <Bell size={16} className="text-gray-600" />
+                {naoLidas > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-[#4C1B53] rounded-full"></span>
+                )}
+              </button>
+
+              {painelNotificacoesAberto && (
+                <div className="absolute right-0 top-12 w-80 bg-white border border-[#EBEAE6] rounded-2xl shadow-lg z-50 overflow-hidden">
+                  <div className="flex justify-between items-center p-4 border-b border-gray-100">
+                    <h4 className="text-sm font-serif text-gray-900">Notificações</h4>
+                    {naoLidas > 0 && (
+                      <button
+                        onClick={marcarTodasComoLidas}
+                        className="text-[10px] font-bold text-[#4C1B53] hover:underline flex items-center gap-1"
+                      >
+                        <CheckCheck size={12} /> Marcar todas como lidas
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+                    {notificacoes.length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-8">Nenhuma notificação por aqui ainda.</p>
+                    )}
+                    {notificacoes.map((n) => (
+                      <div key={n.id} className={`p-4 ${!n.lida ? 'bg-[#F4F0F6]' : ''}`}>
+                        <div className="flex justify-between items-start gap-2">
+                          <p className="text-xs font-bold text-gray-900">{n.titulo}</p>
+                          {!n.lida && (
+                            <button
+                              onClick={() => marcarComoLida(n.id)}
+                              className="text-gray-400 hover:text-[#4C1B53] shrink-0"
+                              title="Marcar como lida"
+                            >
+                              <Check size={14} />
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">{n.mensagem}</p>
+                        <p className="text-[9px] text-gray-300 mt-2">
+                          {new Date(n.criado_em).toLocaleString('pt-BR')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <p className="text-xs font-bold text-gray-900">{nomeUsuario}</p>
