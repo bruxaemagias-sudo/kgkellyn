@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabaseClient';
 import {
   Users,
   Search,
   Bell,
   Plus,
-  LayoutDashboard,
-  Settings,
   History,
   LogOut,
+  Send,
 } from 'lucide-react';
 
 // ==========================================
@@ -22,6 +22,16 @@ const MOCK_CLIENTES = [
   { id: '3', nome: 'Aura Tech', cnpj: '11.222.333/0001-44', plano: 'Essencial', status: 'Suspenso' },
 ];
 
+interface NotificacaoAdmin {
+  id: string;
+  titulo: string;
+  mensagem: string;
+  tipo_destinatario: string;
+  destinatario_id: string | null;
+  criado_em: string;
+  lida: boolean;
+}
+
 export default function AdminPage() {
   const [busca, setBusca] = useState('');
   const [activeTab, setActiveTab] = useState<'clientes' | 'notificacoes' | 'historico'>('clientes');
@@ -29,6 +39,60 @@ export default function AdminPage() {
   const clientesFiltrados = MOCK_CLIENTES.filter((c) =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) || c.cnpj.includes(busca)
   );
+
+  // ==========================================
+  // NOTIFICAÇÕES
+  // ==========================================
+  const [notificacoes, setNotificacoes] = useState<NotificacaoAdmin[]>([]);
+  const [novoTitulo, setNovoTitulo] = useState('');
+  const [novaMensagem, setNovaMensagem] = useState('');
+  const [novoTipoDestinatario, setNovoTipoDestinatario] = useState<'todos' | 'individual'>('todos');
+  const [novoDestinatarioId, setNovoDestinatarioId] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [mensagemStatus, setMensagemStatus] = useState('');
+
+  const carregarNotificacoes = async () => {
+    const { data } = await supabase
+      .from('notificacoes')
+      .select('id, titulo, mensagem, tipo_destinatario, destinatario_id, criado_em, lida')
+      .order('criado_em', { ascending: false });
+    if (data) setNotificacoes(data as NotificacaoAdmin[]);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'notificacoes') {
+      carregarNotificacoes();
+    }
+  }, [activeTab]);
+
+  const handleEnviarNotificacao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEnviando(true);
+    setMensagemStatus('');
+
+    const { data: userData } = await supabase.auth.getUser();
+
+    const { error } = await supabase.from('notificacoes').insert({
+      titulo: novoTitulo,
+      mensagem: novaMensagem,
+      tipo_destinatario: novoTipoDestinatario,
+      destinatario_id: novoTipoDestinatario === 'individual' ? novoDestinatarioId : null,
+      criado_por: userData.user?.id ?? null,
+    });
+
+    setEnviando(false);
+
+    if (error) {
+      setMensagemStatus('Não foi possível enviar. Verifique se você está logado e tente novamente.');
+      return;
+    }
+
+    setMensagemStatus('Notificação enviada com sucesso!');
+    setNovoTitulo('');
+    setNovaMensagem('');
+    setNovoDestinatarioId('');
+    carregarNotificacoes();
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F6F2] flex">
@@ -135,8 +199,105 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'notificacoes' && (
-          <section className="bg-white border border-[#EBEAE6] rounded-2xl p-8 text-center text-sm text-gray-400">
-            Painel de notificações — conecte o Supabase Realtime (tabela <code>notificacoes</code>) para ativar criação, edição e envio em tempo real.
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* FORMULÁRIO DE ENVIO */}
+            <div className="bg-white border border-[#EBEAE6] rounded-2xl p-6 shadow-sm space-y-4 h-fit">
+              <h3 className="text-sm font-serif text-gray-900">Nova notificação</h3>
+              <form onSubmit={handleEnviarNotificacao} className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Título</label>
+                  <input
+                    value={novoTitulo}
+                    onChange={(e) => setNovoTitulo(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:border-[#4C1B53]"
+                    placeholder="Ex: Lembrete de pagamento"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Mensagem</label>
+                  <textarea
+                    value={novaMensagem}
+                    onChange={(e) => setNovaMensagem(e.target.value)}
+                    required
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:border-[#4C1B53]"
+                    placeholder="Escreva a mensagem para o cliente..."
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Destinatário</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNovoTipoDestinatario('todos')}
+                      className={`flex-1 text-xs font-bold py-2 rounded-xl border transition-colors ${
+                        novoTipoDestinatario === 'todos' ? 'bg-[#4C1B53] text-white border-[#4C1B53]' : 'border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      Todos os clientes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNovoTipoDestinatario('individual')}
+                      className={`flex-1 text-xs font-bold py-2 rounded-xl border transition-colors ${
+                        novoTipoDestinatario === 'individual' ? 'bg-[#4C1B53] text-white border-[#4C1B53]' : 'border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      Um cliente específico
+                    </button>
+                  </div>
+                </div>
+                {novoTipoDestinatario === 'individual' && (
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                      ID do usuário (UID do Supabase Authentication)
+                    </label>
+                    <input
+                      value={novoDestinatarioId}
+                      onChange={(e) => setNovoDestinatarioId(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:border-[#4C1B53]"
+                      placeholder="Ex: 32fcee39-b225-496c-aab7-b471a5e5ce6b"
+                    />
+                  </div>
+                )}
+                {mensagemStatus && (
+                  <p className={`text-xs rounded-xl px-3 py-2 ${mensagemStatus.includes('sucesso') ? 'text-green-700 bg-green-50' : 'text-red-600 bg-red-50'}`}>
+                    {mensagemStatus}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={enviando}
+                  className="w-full flex items-center justify-center gap-2 bg-[#4C1B53] text-white text-xs font-bold py-3 rounded-xl hover:bg-[#301E37] transition-colors disabled:opacity-60"
+                >
+                  <Send size={14} /> {enviando ? 'Enviando...' : 'Enviar notificação'}
+                </button>
+              </form>
+            </div>
+
+            {/* HISTÓRICO DE ENVIOS */}
+            <div className="bg-white border border-[#EBEAE6] rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-serif text-gray-900 mb-4">Notificações enviadas</h3>
+              <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                {notificacoes.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-8">Nenhuma notificação enviada ainda.</p>
+                )}
+                {notificacoes.map((n) => (
+                  <div key={n.id} className="border border-gray-100 rounded-xl p-3">
+                    <div className="flex justify-between items-start">
+                      <p className="text-xs font-bold text-gray-900">{n.titulo}</p>
+                      <span className="text-[9px] font-bold text-gray-400 uppercase">
+                        {n.tipo_destinatario === 'todos' ? 'Todos' : 'Individual'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1">{n.mensagem}</p>
+                    <p className="text-[9px] text-gray-300 mt-1.5">{new Date(n.criado_em).toLocaleString('pt-BR')}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </section>
         )}
 
